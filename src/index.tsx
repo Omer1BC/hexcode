@@ -1,7 +1,10 @@
 import React, {useState} from 'react';
 import {render, Text, Box, useInput, useApp} from 'ink';
-import axios from 'axios'
 import {GoogleGenAI} from '@google/genai'
+
+
+let controller = new AbortController()
+
 type Role = 'user' | 'model';
 
 type Message = {
@@ -11,32 +14,21 @@ type Message = {
 	time: string;
 };
 
-type StreamChunk = {
-	event_type: string;
-	delta?: string;
-};
-
 const client = new GoogleGenAI({
   apiKey: process.env.GOOGLE_API_KEY ?? ""
 });
+
+const chat = client.chats.create({model: "gemini-3.5-flash"});
 
 const getTime = () =>
 	new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
 
 const Bubble = ({msg}: {msg: Message}) => (
-	<Box
-		flexDirection="column"
-		alignItems={msg.role === 'user' ? 'flex-end' : 'flex-start'}
-		marginBottom={1}
-		>
-		<Box
-			borderStyle="round"
-			borderColor={msg.role === 'user' ? 'blue' : 'gray'}
-			paddingX={1}
-		>
-			<Text color={msg.role === 'user' ? 'blueBright' : 'white'}>{msg.text}</Text>
-		</Box>
-		<Text dimColor>{msg.time}</Text>
+	<Box flexDirection="column" marginBottom={1}>
+		<Text color={msg.role === 'user' ? 'blueBright' : 'green'} bold>
+			{msg.role === 'user' ? 'You' : 'AI'} <Text dimColor>{msg.time}</Text>
+		</Text>
+		<Text color={msg.role === 'user' ? 'blueBright' : 'white'}>{msg.text}</Text>
 	</Box>
 );
 
@@ -48,53 +40,56 @@ const App = () => {
 
 
 	const updateHistory =  async (stream : any) => {
-
+		let started = false
 		for await (const chunk of stream) {
-
-			switch (chunk.event_type) {
-				case "step.start":
-					if (chunk.step?.type === 'model_output') {
-						setMessages((prev) => [
-							...prev,
-							{id: prev.length+1,text: "", role: 'model',time: getTime()}
-						])
-					}
-					break;
-				case "step.delta":
-					setMessages((prev) => {
-						const updated = [...prev]
-						const last = updated[updated.length-1]
-						if (!last) return prev
-
-						const delta = chunk.delta?.type === 'text' ? chunk.delta.text : ''
-
-						updated[updated.length-1] = {
-							...last,
-							text: last.text + delta
-						};
-
-						return updated
-					})
-					break;
-				default:
-					break;	
+			if (!started) {
+				started = true
+				setMessages((prev) => [
+					...prev,
+					{id: prev.length+1,text: "", role: 'model',time: getTime()}
+				])
 			}
+
+			const delta = chunk.text ?? ''
+
+			setMessages((prev) => {
+				const updated = [...prev]
+				const last = updated[updated.length-1]
+				if (!last) return prev
+
+				updated[updated.length-1] = {
+					...last,
+					text: last.text + delta
+				};
+
+				return updated
+			})
 		}
 	}
 
 	async function * streamResponse(userInput: string) {
-		const stream = await client.interactions.create({
-		model: "gemini-3.5-flash",
-		input: userInput,
-		stream: true,
-		});
+		const signal = controller.signal
 
-		for await (const chunk of stream) {
-			yield chunk
+		try {
+			const stream = await chat.sendMessageStream({
+				message: userInput,
+				config: {abortSignal: signal},
+			});
+
+			for await (const chunk of stream) {
+				yield chunk
+			}
 		}
-
+		catch (error) {
+			if (!signal.aborted) {
+				throw error
+			}
+		}
+		if (signal.aborted) {
+			yield {text: "Interrupted"}
+		}
 	}
-	
+	// write me a 3 paragraph essay about arcane
 	const handleQuery = async (userInput: string) => {
 		const trimmedInput = userInput.trim()
 		setInput('')
@@ -113,7 +108,9 @@ const App = () => {
 
 	useInput(async (char, key) => {
 		if (key.escape) {
-			exit();
+			// exit();
+			controller.abort()
+			controller = new AbortController()
 			return;
 		}
 		if (key.return) {
@@ -132,24 +129,10 @@ const App = () => {
 	const visible = messages.slice(-8);
 
 	return (
-		<Box flexDirection="column" width={60}>
-			{/* Header */}
-			<Box
-				borderStyle="single"
-				borderColor="blue"
-				justifyContent="center"
-				paddingX={1}
-			>
-				<Text bold color="blueBright">
-					John Doe
-				</Text>
-			</Box>
-
+		<Box flexDirection="column" width="100%">
 			{/* Chat area */}
 			<Box
 				flexDirection="column"
-				borderStyle="single"
-				borderColor="gray"
 				paddingX={1}
 				paddingY={1}
 				minHeight={18}
@@ -160,12 +143,10 @@ const App = () => {
 			</Box>
 
 			{/* Input bar */}
-			<Box borderStyle="round" borderColor="blue" paddingX={1}>
-				<Text dimColor>iMessage  </Text>
+			<Box borderStyle="round" borderColor="blue" paddingX={1} width="100%">
 				<Text>{input}</Text>
 				<Text color="blue">▌</Text>
 			</Box>
-			
 
 			<Box paddingX={1}>
 				<Text dimColor>ESC to quit · Enter to send</Text>
