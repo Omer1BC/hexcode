@@ -4,8 +4,9 @@ import type { Tool, Message, History } from './messages.js';
 import { time, newId } from './metadata.js';
 import { Model } from './Model.js';
 import type { Content, FunctionCall, GenerateContentResponse } from '@google/genai';
+import { definitions } from './Tools.js';
 
-const MODEL =  "gemini-3.5-flash"
+const MODEL =  "gemini-2.5-flash-lite"
 export class GeminiModel extends Model<Content> {
 
 
@@ -25,7 +26,9 @@ export class GeminiModel extends Model<Content> {
 			const stream =  await this.#client.models.generateContentStream({
 				model: MODEL,
 				contents: this.normalizeHistory(historyRef.current),
-				config: {abortSignal: super.signal}
+				config: {abortSignal: super.signal,
+					tools:[{functionDeclarations: definitions}] 
+				}
 
 		 	})
 			const respId = newId()
@@ -49,7 +52,7 @@ export class GeminiModel extends Model<Content> {
 	}
 
 	_normalizeToolChunk(id: string,chunk:FunctionCall) : Tool {
-		return { id, status: 'pending', role: 'tool', time: time(), function: chunk.name!, args: chunk.args!, controller: new AbortController(), value: '' }
+		return { id, status: 'loaded', role: 'tool', time: time(), function: chunk.name!, args: chunk.args!, controller: new AbortController(), value: '' }
 	}
 
 	normalizeHistory(history: History[]): Content[] {

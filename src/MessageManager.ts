@@ -1,5 +1,4 @@
 
-// claude --resume 76063420-199b-48a0-847d-81772430c59c
 import type {Dispatch, SetStateAction, RefObject} from 'react';
 import type { Message, Role, Tool, History } from './messages.js';
 import { time, newId } from './metadata.js';
@@ -21,25 +20,16 @@ export class MessageManager{
 	// add seperate method for tools 
 	// make this functional: returns updatees 
 	updateHistory(chunk: Tool | Message) {
-		if (chunk.role == 'tool' && chunk.status == 'pending') {
-			this.#setTools(prev => [
-				...prev,
-				chunk
-				]	
-			)
-		}
-		else {
-			this.#setHistory(() => {
-				const updated = this._appendOrExtend(chunk)
-				this.historyRef.current = updated
-				return updated
-			})
-		}
+		this.#setHistory(() => {
+			const updated = this._appendOrExtend(chunk)
+			this.historyRef.current = updated
+			return updated
+		})
 	}
 
 
 	_appendOrExtend(chunk: Tool | Message) {
-		if (chunk.role !== 'tool' && this.#messageStore.has(chunk.id)) {
+		if ( this.#messageStore.has(chunk.id)) {
 			return this._extend(chunk)
 		}
 		else {
@@ -52,9 +42,9 @@ export class MessageManager{
 		return [...this.#messageStore.values()]		
 	}
 
-	_extend(chunk: Message) {
+	_extend(chunk: Tool | Message) {
 		const target = this.#messageStore.get(chunk.id)!
-		this.#messageStore.set(chunk.id,{...target,value: target.value + chunk.value})
+		this.#messageStore.set(chunk.id,{...chunk,value: target.value + chunk.value})
 		return [...this.#messageStore.values()]		
 	}
 

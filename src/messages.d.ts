@@ -1,6 +1,6 @@
 export type Role = 'user' | 'model' | 'terminal';
 export type Status = 'loaded' | 'pending' | 'complete' | 'rejected'
-
+export type Approval = 'accept' | 'reject'
 export interface Message {
 	id: string;
 	role: Role;

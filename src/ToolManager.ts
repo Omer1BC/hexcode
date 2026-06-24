@@ -1,12 +1,15 @@
-import type { Tool,Message } from './messages.js';
-
+import type { Tool, Message, Approval } from './messages.js';
+import { EventEmitter } from 'events'
+import { toolMapping } from './Tools.js';
 export class ToolManager {
 	private controller;
-	private queue : Tool[];
+	private queue: Tool[];
+	#emitter: EventEmitter
 
-	constructor () {
+	constructor() {
 		this.controller = new AbortController();
 		this.queue = []
+		this.#emitter = new EventEmitter()
 	}
 
 	get signal(): AbortSignal {
@@ -17,18 +20,41 @@ export class ToolManager {
 		return this.queue.length;
 	}
 
-	enqueue(chunk : Tool): void {
+	enqueue(chunk: Tool): void {
 		this.queue.push(chunk)
 	}
 
 	// completes tools
 	async *executeTools(): AsyncIterable<Tool> {
+		for (const tool of this.queue.filter((tool) => tool.status === 'pending')) {
+			yield new Promise<Tool>(async (resolve) => {
+				const res = await toolMapping[tool.function]!(tool.args)
+				return resolve({ ...tool, status: 'complete', value: res })
+			}
+
+			)
+		}
 
 	}
 
-	async *clearTools(): AsyncIterable<Tool> {}
+	handleToolApproval(id: string, decision: Approval) {
+		this.#emitter.emit(id,decision)
+	}
 
-	getToolRequest(_chunk: string): void {}
+	async awaitApproval() {
+		return Promise.all(
+			this.queue.map((tool) => new Promise((resolve) => {
+				this.#emitter.once(tool.id, (decision: Approval) => {
+					tool.status = decision === 'accept' ? 'pending' : 'rejected'
+					resolve(null)
+				})
+
+			}))
+		)
+	}
+	async *clearTools(): AsyncIterable<Tool> { }
+
+	getToolRequest(_chunk: string): void { }
 
 
 }

@@ -1,9 +1,24 @@
 import React, {useState} from 'react';
 import {render, Text, Box, useInput, useApp} from 'ink';
 import { useStateSnapshotContext } from './contexts/stateSnapshotContext.js';
-import type { History } from './messages.js';
+import type { History, Tool } from './messages.js';
 import { newId, time } from './metadata.js';
 
+const ToolBubble = ({tool, focused, onDecision}: {tool: Tool, focused: boolean, onDecision: (id: string, decision: 'accept' | 'reject') => void}) => {
+	const statusColor = tool.status === 'complete' ? 'green' : tool.status === 'rejected' ? 'red' : 'gray'
+	return (
+		<Box flexDirection="column" marginBottom={1} borderStyle={focused ? 'round' : undefined} borderColor="yellow">
+			<Text color="yellow" bold>
+				⚙ {tool.function} <Text dimColor>{tool.time}</Text>{' '}
+				<Text color={statusColor}>[{tool.status}]</Text>
+			</Text>
+			{tool.status === 'loaded' && focused && (
+				<Text dimColor>  [A] Accept  [R] Reject</Text>
+			)}
+			{tool.value ? <Text dimColor>{tool.value}</Text> : null}
+		</Box>
+	)
+}
 
 const Bubble = ({msg}: {msg: History}) => (
 	<Box flexDirection="column" marginBottom={1}>
@@ -11,13 +26,14 @@ const Bubble = ({msg}: {msg: History}) => (
 			{msg.role === 'user' ? 'You' : 'AI'} <Text dimColor>{msg.time}</Text>
 		</Text>
 		<Text color={msg.role === 'user' ? 'blueBright' : 'white'}>{msg.value}</Text>
-	</Box>
+</Box>
 );
 
 export const App = () => {
 	const {exit} = useApp();
 
 	const [input, setInput] = useState('');
+	const [focusedToolIndex, setFocusedToolIndex] = useState(0)
 	const {model, toolManager, messageManager,history,tools} = useStateSnapshotContext()
 
 	
@@ -31,12 +47,23 @@ export const App = () => {
 		}
 	}
 
+	const pendingTools = history.filter((msg): msg is Tool => msg.role === 'tool' && msg.status === 'loaded')
+
 	useInput(async (char, key) => {
 		if (key.escape) {
-			// exit();
 			model.abort()
 			return;
 		}
+
+		if (pendingTools.length > 0) {
+			if (key.upArrow) { setFocusedToolIndex(i => Math.max(0, i - 1)); return }
+			if (key.downArrow) { setFocusedToolIndex(i => Math.min(pendingTools.length - 1, i + 1)); return }
+			const focused = pendingTools[focusedToolIndex]
+			if (char === 'a' && focused) { toolManager.handleToolApproval(focused.id, 'accept'); return }
+			if (char === 'r' && focused) { toolManager.handleToolApproval(focused.id, 'reject'); return }
+			return
+		}
+
 		if (key.return) {
 			handleQuery(input)
 			return;
@@ -63,6 +90,7 @@ export const App = () => {
 					switch (chunk.role) {
 						case "tool":
 							toolManager.enqueue(chunk)
+							yield chunk
 							break;
 						case "model":
 							yield chunk
@@ -77,6 +105,9 @@ export const App = () => {
 			}
 
 			if (!toolManager.queueLength) break
+
+
+			await toolManager.awaitApproval()
 
 			for await (const toolResult of toolManager.executeTools()) {
 				yield toolResult
@@ -104,7 +135,9 @@ export const App = () => {
 				minHeight={18}
 			>
 				{history.map((msg) => (
-					<Bubble key={msg.id} msg={msg} />
+					msg.role === 'tool'
+						? <ToolBubble key={msg.id} tool={msg} focused={pendingTools[focusedToolIndex]?.id === msg.id} onDecision={(id, decision) => toolManager.handleToolApproval(id, decision)} />
+						: <Bubble key={msg.id} msg={msg} />
 				))}
 			</Box>
 
