@@ -5,7 +5,7 @@ export abstract class Model<APIMessage> {
 	protected controller: AbortController = new AbortController();
 
 	// must time stamp responses
-	abstract fetchAsNormalizedStream(historyRef: RefObject<History[]>, input: string): AsyncIterable<Tool | Message>;
+	abstract fetchAsNormalizedStream(historyRef: RefObject<History[]>): AsyncIterable<Tool | Message>;
 
 	get signal(): AbortSignal {
 		return this.controller.signal;

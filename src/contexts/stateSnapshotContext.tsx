@@ -1,53 +1,26 @@
-import React, {createContext, useContext, useState, useRef,} from 'react';
-import type { Message, Tool, History } from '@src/messages.js';
-import type { Model } from '@src/Model.js';
-import { GeminiModel } from '@src/GeminiModel.js';
-import { ToolManager } from '@src/ToolManager.js';
-import { MessageManager } from '@src/MessageManager.js';
+import React, {createContext, useContext, useState, useRef} from 'react';
+import type { History } from '@src/messages.js';
+import { Agent } from '@src/Agent.js';
 
-// define the context shape later unpacked
-type stateSnapshotContext =  {
-	model: Model<unknown>
-	toolManager: ToolManager
+type stateSnapshotContext = {
+	agent: Agent
 	history: History[]
-	tools: Tool[]
-	messageManager: MessageManager
 }
 
-
-// create the parent node that provides the context 
-const StateSnapshotContext =  createContext<stateSnapshotContext | null>(null)
-
+const StateSnapshotContext = createContext<stateSnapshotContext | null>(null)
 
 export function useStateSnapshotContext() {
 	const ctx = useContext(StateSnapshotContext)
-	if (!ctx) {
-		throw new Error("Expecting a provider for StateSnapshotContext")
-	}
+	if (!ctx) throw new Error("Expecting a provider for StateSnapshotContext")
 	return ctx
-
 }
 
-// wrap the provider node around its children, assigning the context values
-export function SnapshotContextProvider( {children} : {children: React.ReactNode}  ) {
-	const [history,setHistory] = useState<History[]>([])
-	const [tools,setTools] = useState<Tool[]>([])
+export function SnapshotContextProvider({children}: {children: React.ReactNode}) {
+	const [history, setHistory] = useState<History[]>([])
 	const historyRef = useRef<History[]>([])
-	const modelRef = useRef<Model<unknown>>(new GeminiModel())
-	const toolManagerRef = useRef<ToolManager>(new ToolManager())
-	const messageManagerRef = useRef<MessageManager>(new MessageManager(setTools,setHistory,historyRef))
-	// const model = new GeminiModel()
-	// const toolManager = new ToolManager()
-	// const messageManager = new MessageManager(setTools,setHistory,historyRef)
+	const agentRef = useRef<Agent>(new Agent(setHistory, historyRef))
 
-
-	return <StateSnapshotContext.Provider value={{history, tools, model: modelRef.current, toolManager: toolManagerRef.current, messageManager: messageManagerRef.current}}>
+	return <StateSnapshotContext.Provider value={{agent: agentRef.current, history}}>
 		{children}
-	</StateSnapshotContext.Provider> 
-
-
+	</StateSnapshotContext.Provider>
 }
-
-
-
-

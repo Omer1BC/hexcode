@@ -1,19 +1,15 @@
-import type { Tool, Message, Approval } from './messages.js';
+import type { Tool, Approval } from './messages.js';
+import type { History } from './messages.js';
 import { EventEmitter } from 'events'
 import { toolMapping } from './Tools.js';
+
 export class ToolManager {
-	private controller;
-	private queue: Tool[];
+	private queue: string[];
 	#emitter: EventEmitter
 
 	constructor() {
-		this.controller = new AbortController();
 		this.queue = []
 		this.#emitter = new EventEmitter()
-	}
-
-	get signal(): AbortSignal {
-		return this.controller.signal;
 	}
 
 	get queueLength(): number {
@@ -21,40 +17,43 @@ export class ToolManager {
 	}
 
 	enqueue(chunk: Tool): void {
-		this.queue.push(chunk)
+		this.queue.push(chunk.id)
 	}
 
-	// completes tools
-	async *executeTools(): AsyncIterable<Tool> {
-		for (const tool of this.queue.filter((tool) => tool.status === 'pending')) {
-			yield new Promise<Tool>(async (resolve) => {
-				const res = await toolMapping[tool.function]!(tool.args)
-				return resolve({ ...tool, status: 'complete', value: res })
-			}
+	clearQueue(): void {
+		this.queue = []
+	}
 
-			)
+	handleToolApproval(id: string, decision: Approval): void {
+		this.#emitter.emit(id, decision)
+	}
+
+	async *awaitApproval(signal?: AbortSignal): AsyncIterable<{id: string, decision: Approval}> {
+		if (signal) {
+			signal.addEventListener('abort', () => {
+				for (const id of this.queue) this.#emitter.emit(id, 'reject')
+			}, {once: true})
 		}
 
+		for (const id of this.queue) {
+			const decision = await new Promise<Approval>(resolve => {
+				this.#emitter.once(id, resolve)
+			})
+			yield {id, decision}
+		}
 	}
 
-	handleToolApproval(id: string, decision: Approval) {
-		this.#emitter.emit(id,decision)
+	async *executeTools(lookup: (id: string) => History | undefined): AsyncIterable<{id: string, result: string}> {
+		for (const id of this.queue) {
+			const entry = lookup(id)
+			if (!entry || entry.role !== 'tool' || (entry as Tool).status !== 'pending') continue
+			const tool = entry as Tool
+			try {
+				const result = await toolMapping[tool.function]!(tool.args)
+				yield {id, result}
+			} catch (error) {
+				yield {id, result: error instanceof Error ? error.message : String(error)}
+			}
+		}
 	}
-
-	async awaitApproval() {
-		return Promise.all(
-			this.queue.map((tool) => new Promise((resolve) => {
-				this.#emitter.once(tool.id, (decision: Approval) => {
-					tool.status = decision === 'accept' ? 'pending' : 'rejected'
-					resolve(null)
-				})
-
-			}))
-		)
-	}
-	async *clearTools(): AsyncIterable<Tool> { }
-
-	getToolRequest(_chunk: string): void { }
-
-
 }

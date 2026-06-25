@@ -6,7 +6,7 @@ import { Model } from './Model.js';
 import type { Content, FunctionCall, GenerateContentResponse } from '@google/genai';
 import { definitions } from './Tools.js';
 
-const MODEL =  "gemini-2.5-flash-lite"
+const MODEL =  "gemini-3.1-flash-lite"
 export class GeminiModel extends Model<Content> {
 
 
@@ -21,7 +21,7 @@ export class GeminiModel extends Model<Content> {
 
 	}
 
-	async *fetchAsNormalizedStream(historyRef: RefObject<History[]>, input: string): AsyncIterable<Tool | Message> {
+	async *fetchAsNormalizedStream(historyRef: RefObject<History[]>): AsyncIterable<Tool | Message> {
 		try {
 			const stream =  await this.#client.models.generateContentStream({
 				model: MODEL,
@@ -56,15 +56,20 @@ export class GeminiModel extends Model<Content> {
 	}
 
 	normalizeHistory(history: History[]): Content[] {
-		return this.filterHistory(history).map((elem) => {
-			switch (elem.role) {
-				case 'user':
-				case 'model':
-					return { role: elem.role, parts: [{ text: elem.value }] };
-				case 'tool':
-					return { role: 'user', parts: [{ functionResponse: { name: elem.function, response: { result: elem.value } } }] };
-			}
-		}) as Content[];
+		return this.filterHistory(history)
+			.filter(elem => elem.role !== 'tool' || (elem as Tool).status === 'complete')
+			.flatMap((elem): Content[] => {
+				switch (elem.role) {
+					case 'user':
+					case 'model':
+						return [{ role: elem.role, parts: [{ text: elem.value }] }];
+					case 'tool':
+						return [
+							{ role: 'model', parts: [{ functionCall: { name: elem.function, args: elem.args } }] },
+							{ role: 'user', parts: [{ functionResponse: { name: elem.function, response: { result: elem.value } } }] }
+						];
+				}
+			});
 	}
 
 

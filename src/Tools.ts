@@ -1,5 +1,7 @@
 import type { FunctionDeclaration } from '@google/genai';
-
+import { spawn,exec } from 'child_process';
+import {readFile, writeFile} from 'fs/promises'
+import { promisify } from 'util';
 
 export const definitions: FunctionDeclaration[] = [
 	{
@@ -23,6 +25,41 @@ export const definitions: FunctionDeclaration[] = [
 			},
 			required: ['text']
 		}
+	},
+	{
+		name: "read",
+		description: "read the contents of a file",
+		parametersJsonSchema : {
+			type: 'object',
+			properties: {
+				path: {type: "string", description: 'path of the file to read'}
+			},
+			required: ['path']
+		}
+	},
+	{
+		name: 'write',
+		description: 'Replaces the original file with contents with content to a file',
+		parametersJsonSchema : {
+			type: 'object',
+			properties: {
+				path : {type: 'string', description: 'path of the file to write'},
+				content: {type: 'string', description: 'content to write'}
+			},
+			required: ["path", "content"]
+		}
+	},
+	{
+		name: 'powerShell',
+		description: 'execute a command in powershell',
+		parametersJsonSchema : {
+			type: 'object',
+			properties : {
+				command: {type: 'string', description: "command as a complete string eg 'ls -a' "},
+
+			},
+			required: ["command"]
+		}
 	}
 ]
 
@@ -36,6 +73,30 @@ export const toolMapping: Record<string, (args: Record<string, unknown>) => Prom
 		const text = args.text as string
 		const count = text.trim().split(/\s+/).filter(Boolean).length
 		return `Word count: ${count}`
+	},
+	read: async (args)  => {
+		const path = args.path as string 
+		return await readFile(path,'utf-8')
+
+	},
+	write: async(args) => {
+		const path = args.path as string 
+		await writeFile(path,args.content as string)
+		return "success!"
+	},
+	powerShell: async(args) => {
+		// const process = spawn(args.command as string,args.arguments as string[],{shell: true})
+		// let result = ""
+		// process.stdout.on('data',(data) =>{
+		// 	result += data.toString()
+		// })
+		const promise = promisify(exec)
+
+		const {stdout,stderr} = await promise(args.command as string)
+
+		return ` ${args.command} | ${stdout}`
 	}
+
+	
 }
 
